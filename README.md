@@ -1,4 +1,4 @@
-# shellup
+# Shell Up!
 A much more lightweight way to connect to a webshell without having to use Burp Suite.
 I wrote this not out of necessity, but because I was always considering doing it one day
 and given the current COVID-19 climate I finally said screw it and wrote this. In the event
