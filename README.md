@@ -7,5 +7,15 @@ looks something like this:
 
 `<?php system($_GET['cmd']); ?>`
 
-I can simply run this script and issue my commands. Typically all I want to do is run a reverse
-shell, so this script takes care of the URL Encoding for you.
+You can run this script and issue commands as needed. Typically all that is necessary is a
+callback via a reverse shell, so this script takes care of all of the overhead necessary.
+
+With the "shellup" function, now all you need to do is type something like:
+
+`shellup bash`
+
+And it will connect back to you using the /dev/tcp/ method that comes with the bash shell.
+Several reverse callback methods have been preloaded into this script, but when all else fails
+you can simply issue arbitrary commands via the included REPL.
+
+Hack The Planet!
