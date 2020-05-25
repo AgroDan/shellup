@@ -10,6 +10,12 @@ looks something like this:
 You can run this script and issue commands as needed. Typically all that is necessary is a
 callback via a reverse shell, so this script takes care of all of the overhead necessary.
 
+## Warning
+This script is intended for use against **AUTHORIZED PENETRATION TESTING OR EDUCATIONAL USE
+ONLY**. It is not meant to be used for illicit intent, and any misuse of this software will
+not be the responsibility of the author or any other collaborator. Use this only with the
+network or target owner's permission.
+
 ## Usage
 
 `shellup.py http://example.com/pwned.php`
