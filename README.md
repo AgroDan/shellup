@@ -22,12 +22,14 @@ assuming your invoke word is "cmd". If it isn't, you can modify those settings i
 Don't forget to set your LHOST and LPORT properties for reverse shells:
 
 `shellset lhost 10.10.14.2`
+
 `shellset lport 9001`
 
 Something not working right? Run it through a proxy like burpsuite or mitmproxy andfind out
 what's going on:
 
 `shellset proxy http://localhost:8080`
+
 `whoami`
 
 Or, you could just set these flags up beforehand at the command line:
