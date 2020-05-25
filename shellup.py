@@ -73,14 +73,16 @@ def test_for_code_exec(url, invoke_word, proxy_string=""):
         return True
     return False
 
-def check_for_binary(url, invoke_word, binary):
+def check_for_binary(url, invoke_word, binary, proxy_string=""):
     """
     Utilizes the "invoke_command" function to run a simple test
     to determine if a binary exists in our path, returns the path
     if it exists, NoneType if it does not.
     """
     cmd_string = f"which {binary}"
-    result = invoke_command(url, invoke_word, cmd_string)
+    result = invoke_command(url, invoke_word, cmd_string, proxy_string)
+    if result is None:
+        return False
     if binary in result:
         return result.strip()
     return None
