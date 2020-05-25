@@ -25,7 +25,7 @@ Don't forget to set your LHOST and LPORT properties for reverse shells:
 
 `shellset lport 9001`
 
-Something not working right? Run it through a proxy like burpsuite or mitmproxy andfind out
+Something not working right? Run it through a proxy like burpsuite or mitmproxy and find out
 what's going on:
 
 `shellset proxy http://localhost:8080`
