@@ -10,7 +10,7 @@ looks something like this:
 You can run this script and issue commands as needed. Typically all that is necessary is a
 callback via a reverse shell, so this script takes care of all of the overhead necessary.
 
-To use, point this script at the affected code:
+## Usage
 
 `shellup.py http://example.com/pwned.php`
 
