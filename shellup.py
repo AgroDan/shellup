@@ -75,10 +75,10 @@ def test_for_code_exec(url, invoke_word, shelltype="bash", proxy_string=""):
     test_string = randomString()
     test_var = randomString()
     if shelltype == "cmd":
-        cmd_string = f"set tfce{test_var}={test_string} & echo %tfce{testvar}%"
+        cmd_string = f"set tfce{test_var}={test_string} & echo %tfce{test_var}%"
     else:
         cmd_string = f"export tfce{test_var}={test_string} && echo $tfce{test_var}"
-        
+
     result = invoke_command(url=url, invoke_word=invoke_word, cmd=cmd_string, shelltype=shelltype, proxy_string=proxy_string)
     if result is None:
         return False
